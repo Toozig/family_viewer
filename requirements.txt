@@ -1,0 +1,7 @@
+pyBigWig>=0.3.22
+seaborn>=0.12.2
+pandas>=1.5.3
+bio>=1.6.2
+shiny>=0.8.1
+pyarrow>=15.0.0
+git+https://github.com/Toozig/DnaFeaturesViewer.git
