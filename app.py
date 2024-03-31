@@ -64,6 +64,7 @@ def update_family_details():
 @reactive.calc
 def update_peak_data():
     print(f'updating peak data for {input.peak()}')
+    app_stats.set_peak_id(input.peak())
     cur_peak_df =  app_stats.get_peak_data()
     # cur_peak_df =  get_peak_data(input.peak())
     return cur_peak_df
@@ -74,11 +75,15 @@ def update_variant_list():
     cur_var_df =  app_stats.get_variant_df()
     return cur_var_df
 
+@reactive.effect
+def set_source():
+    app_stats.set_source(input.source())
 
-@reactive.calc
-def get_peak_plot():
-    print(f'setting plot with {input.peak()}, {input.source()}, {input.score_threshold()}, {input.family()}, {input.n_lines()}')
-    app_stats.get_peak_plot( input.n_lines(), input.checkbox())
+
+def get_peak_plot(peak, source, score_threshold, family, n_lines, checkbox):
+        print(f'getting plot')
+        print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}, n_lines: {n_lines}')
+        app_stats.get_peak_plot(n_lines, checkbox)
 
 with ui.layout_columns(col_widths=[6, 6, 12]):
     with ui.card(full_screen=True):
@@ -102,7 +107,8 @@ with ui.card(full_screen=True):
   
     @render.plot()
     def track_plot():
-        get_peak_plot()
+        print('updating plot')
+        get_peak_plot(input.peak(), input.source(), input.score_threshold(), input.family(), input.n_lines(), input.checkbox())
 
 with ui.layout_columns(col_widths=[6, 6, 12]):
     with ui.card():
@@ -114,8 +120,10 @@ with ui.layout_columns(col_widths=[6, 6, 12]):
 
     @reactive.calc
     def update_variant_information():
-        req(input.variant_list_selected_rows())
-        string = app_stats.get_variant_info(input.variant_list_selected_rows()[0])
+        # req(input.variant_list_selected_rows())
+        print(f"change description for{input.peak(),input.family()}")
+        index = 0 if len(input.variant_list_selected_rows()) == 0 else input.variant_list_selected_rows()[0]
+        string = app_stats.get_variant_info(index)
         return string
 
     with ui.card():

@@ -18,10 +18,10 @@ SHOW_SEQ = 'Show sequence'
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # CONSERVATION_FILE = '/dsi/gonen-lab/users/roni/useful_files/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
-# JASPAR_FILE = 'data/jaspar2024TFBSresults_f350.prq'
-HOMER_FILE = 'data/homer_TFBS_results.prq'
-# HOMER_FILE = 'data/homer_TFBS_results_f7581.prq'
+# JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
+JASPAR_FILE = 'data/jaspar2024TFBSresults_f350.prq'
+# HOMER_FILE = 'data/homer_TFBS_results.prq'
+HOMER_FILE = 'data/homer_TFBS_results_f7581.prq'
 # JASPAR_FILE = '/dsi/gonen-lab/users/roni/useful_files/outputs/jaspar2024TFBSresults.prq'
 # HOMER_FILE = '/dsi/gonen-lab/users/roni/useful_files/outputs/homer_TFBS_results.prq'
 # VARIANT_INHERITENCE_FILE = '/dsi/gonen-lab/shared_files/WGS_on_DSD/data/pipeline_outputs/variants_with_layers/2024-01-11/inheritance/all_vars.csv'
@@ -76,6 +76,8 @@ BW = pyBigWig.open(CONSERVATION_FILE)
 SOURCE_DICT = {'JASPAR': JASPAR_FILE,
                 'HOMER': HOMER_FILE}
 
+SCORE_DEFAULT_THRESHOLD = {'JASPAR': 400,
+                           'HOMER': 7}
 
 
 def filter_chrom_df(source_df, chrom_peak_df):
@@ -181,6 +183,7 @@ class currentState:
         if source != self.source:
             print("setting source")
             self.source = source
+            self.score_threshold = SCORE_DEFAULT_THRESHOLD[source]
             self.__set_source_df(source)
 
     @timer_decorator
@@ -304,11 +307,16 @@ class currentState:
 
     def get_threshold_min_max(self):
         cur_peak_tfbs = self.get_tfbs_filtered_df()
+        if cur_peak_tfbs.shape[0] == 0:
+            print(f'no tfbs for peak_id: {self.peak_id} of source {self.source}')
+            return 0,0
         return cur_peak_tfbs['score'].min(), cur_peak_tfbs['score'].max()
 
 
     
     def __parse_names(self,names, header):
+        if type(names) != str :
+            return ''
         string = f"**{header}**\n"
         string += ''.join(['- ' + name + '\n' for name in names.split(';')])
         return string + '\n'
