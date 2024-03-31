@@ -2,10 +2,8 @@ from Bio import  Entrez, SeqIO
 from dna_features_viewer import GraphicFeature, GraphicRecord
 import pandas as pd
 import seaborn as sns
-from family_viewer import get_tfbs_filtered_df,get_variant_df, get_peak_data, get_peak_conservation
 MAX_SCORE_TFBS = 'maximal score TFBS per site'
 SHOW_SEQ = 'Show sequence'
-
 
 
 
@@ -79,7 +77,7 @@ def make_plot(tfbs_df: pd.DataFrame ,
     
 
     enh13 = GraphicRecord(sequence_length=seq_len,
-                              sequence = get_seq(enh_dict, 'manoneh322@konican.com') if show_seq else None,
+                              sequence = None if not show_seq else get_seq(enh_dict, 'manoneh322@konican.com') ,
                           features=features,
                           first_index=enh_dict['from'] ) 
     # plot the enhancer
@@ -93,16 +91,18 @@ def make_plot(tfbs_df: pd.DataFrame ,
 
 
 
-def get_peak_plot(peak_id, source_name,
-                score_threshold,
-                family_id,
+def get_peak_plot(app_stats,
                 n_lines,
-                checked_box):
+                checked_box,
+                peak_id = None,
+                source_name= None,
+                score_threshold = None,
+                family_id = None):
+    print(f'setting plot with {peak_id}, {source_name}, {score_threshold}, {family_id}, {n_lines}')
     one_per_site = MAX_SCORE_TFBS in checked_box
-    tfbs_df = get_tfbs_filtered_df(source_name,peak_id , score_threshold, one_per_site)
-    var_df = get_variant_df(family_id, peak_id)
-    peak_dict = get_peak_data(peak_id).to_dict('records')[0]
-    print(peak_dict)
-    conservation_list = get_peak_conservation(peak_id)
+    tfbs_df = app_stats.get_tfbs_filtered_df(one_per_site)
+    var_df = app_stats.get_variant_df()
+    peak_dict = app_stats.get_peak_data().to_dict('records')[0]
+    conservation_list = app_stats.get_peak_conservation(peak_dict)
     show_seq = SHOW_SEQ in checked_box
     return make_plot(tfbs_df, var_df, peak_dict, conservation_list, n_lines, show_seq)

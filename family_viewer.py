@@ -1,16 +1,32 @@
 import pandas as pd
 import pyBigWig
+from viewer_function import make_plot
+import time
+
+def timer_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Execution time of {func.__name__}: {end_time - start_time} seconds")
+        return result
+    return wrapper
+
+MAX_SCORE_TFBS = 'maximal score TFBS per site'
+SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # CONSERVATION_FILE = '/dsi/gonen-lab/users/roni/useful_files/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
 JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
+# JASPAR_FILE = 'data/jaspar2024TFBSresults_f350.prq'
 HOMER_FILE = 'data/homer_TFBS_results.prq'
+# HOMER_FILE = 'data/homer_TFBS_results_f7581.prq'
 # JASPAR_FILE = '/dsi/gonen-lab/users/roni/useful_files/outputs/jaspar2024TFBSresults.prq'
 # HOMER_FILE = '/dsi/gonen-lab/users/roni/useful_files/outputs/homer_TFBS_results.prq'
 # VARIANT_INHERITENCE_FILE = '/dsi/gonen-lab/shared_files/WGS_on_DSD/data/pipeline_outputs/variants_with_layers/2024-01-11/inheritance/all_vars.csv'
 PEAK_FILE = 'data/merged_mATAC_hATAC_0507.bed.gz'
-SAMPLE_META_DATA_FILE = 'data/sample_metadata.xlsx'
+SAMPLE_META_DATA_FILE = 'data/sample_metadata.csv'
 VARIANT_INHERITENCE_FILE = 'data/all_vars.csv'
 # PEAK_FILE = '/dsi/gonen-lab/users/toozig/projects/WT_canidate_enhancer/data/merged_mATAC_hATAC_0507.bed.gz'
 # SAMPLE_META_DATA_FILE = '/dsi/gonen-lab/shared_files/WGS_on_DSD/data/read_only/samples/sample_metadata.xlsx'
@@ -32,31 +48,297 @@ VAR_DF_COLS_TO_KEEP = ['CHROM',
  'total_probands',
  'healthy_members',]
 
+#### table cols ARGS
+SEGMENT_ID_COL = 14
+LENGTH_COL = 18
+TAD_COL =11
+PROBAND_NAMES_COL = 22
+HEALTHY_NAMES_COL = 24
+
+
 
 
 ## dfs
 
 def process_df(df):
+    df['chr'] = df['chr'].str.replace('chr','')
     df['strand'] = df.strand.replace({'-':-1,'+':1})
     df['score'] = df['score'].astype(float)
     return df
 
 
-JASPER_DF = pd.read_parquet(JASPAR_FILE) 
-HOMER_DF = pd.read_parquet(HOMER_FILE)
-VARIANT_DF = pd.read_csv(VARIANT_INHERITENCE_FILE)
-VARIANT_DF.CHROM = VARIANT_DF.CHROM.str.replace('chr','')
-jasper_df = process_df(JASPER_DF)
-homer_df = process_df(HOMER_DF)
-SAMPLE_META_DATA_DF =  pd.read_excel(SAMPLE_META_DATA_FILE)
-SAMPLE_META_DATA_DF.family_id = SAMPLE_META_DATA_DF['family_id'].astype(str)
-PEAK_DF = pd.read_csv(PEAK_FILE, sep='\t', header=None,  names=['chrom','start', 'end', 'id'])
 BW = pyBigWig.open(CONSERVATION_FILE)
 
 
-SOURCE_DICT = {'JASPAR': JASPER_DF,
-                'HOMER': HOMER_DF}
+# SOURCE_DICT = {'JASPAR': JASPER_DF,
+#                 'HOMER': HOMER_DF}
 
+SOURCE_DICT = {'JASPAR': JASPAR_FILE,
+                'HOMER': HOMER_FILE}
+
+
+
+def filter_chrom_df(source_df, chrom_peak_df):
+    chrom_tfbs = source_df[source_df.chr == chrom_peak_df.CHROM.values[0]]
+    
+    # Create 2D arrays for start and end values
+    start = chrom_tfbs['start'].values[:, None]
+    end = chrom_tfbs['end'].values[:, None]
+    
+    # Check for overlaps using broadcasting
+    overlaps = (start >= chrom_peak_df['from'].values) & (end <= chrom_peak_df['to'].values)
+    
+    # Check if any overlap exists for each row
+    is_relevant = overlaps.any(axis=1)
+    
+    # Filter the DataFrame
+    f_tfbs = chrom_tfbs[is_relevant]
+    
+    return f_tfbs
+
+
+
+
+@timer_decorator
+def open_family_matadata():
+    family_metadata = pd.read_csv(SAMPLE_META_DATA_FILE)
+    family_metadata.family_id = family_metadata['family_id'].astype(str)
+    return family_metadata
+
+def max_score_per_coord(df):
+
+    # Create a new column 'group' to represent overlapping segments with the same 'strand'
+    groups = (df['start'] <= df['end'].shift(1)).tolist()
+    group = 0 
+    i = 0
+    flag = False
+    label = []
+    while i < len(df):
+        cur = groups[i]
+       
+        if cur:
+            if not flag:
+                group += 1
+                label[-1] = group
+                flag = True
+
+            label.append(group)
+        else:
+            group += 1
+            label.append(group)
+            flag = False
+        i += 1
+    df.insert(0,'label',label)
+    # Find the row index with the maximum score for each group
+    df = df.astype({'score': 'int32'})
+    idx_max_score = df.groupby(['label','strand'])['score'].idxmax()
+
+    # Extract the corresponding rows from the DataFrame
+    result_df = df.loc[idx_max_score].drop(columns=['label'])
+
+    return result_df
+
+
+
+class currentState:
+    _instance = None
+    family_list = None
+
+
+    @classmethod
+    def get_family_list(cls):
+        if cls.family_list is None:
+            family_metadata =  open_family_matadata()
+            cls.family_list = family_metadata.family_id.unique().tolist()
+        return cls.family_list
+
+
+    @classmethod
+    def get_source_list(cls):
+        return list(SOURCE_DICT.keys())
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(currentState, cls).__new__(cls)
+            cls._instance.score_threshold = 400
+            cls._instance.family_id = None
+            cls._instance.family_df = None
+            # init by set_family
+            cls._instance.peak_id = None
+            cls._instance.source_df = None
+            cls._instance.var_df = None
+            source_list = cls.get_source_list()
+            cls._instance.source = source_list[0]
+            # cls._instance.set_source(source_list[0])
+            cls._instance.set_family_id('10726')
+
+        return cls._instance
+
+    def set_score_threshold(self, score_threshold):
+        self.score_threshold = score_threshold
+
+    def set_source(self, source):
+        if source != self.source:
+            print("setting source")
+            self.source = source
+            self.__set_source_df(source)
+
+    @timer_decorator
+    def __set_source_df(self, source):
+        source_df = process_df(pd.read_parquet(SOURCE_DICT[source]))
+        print(f'setting source_df, shape: {source_df.shape}')
+        cur_peaks = self.var_df[['INTERVAL_ID','CHROM','from','to']].drop_duplicates()
+        source_df = cur_peaks.groupby('CHROM').apply(lambda x : filter_chrom_df(source_df, x))
+        self.source_df = source_df
+
+    def get_source_df(self):
+        if self.source is None:
+            print('no source')
+            return pd.DataFrame()
+        return self.source_df
+
+    def set_family_id(self, family_id):
+        """
+        Setting the family_id will update the var_df, family_df and peak_id.
+        The order of the update is important-
+        1. family_df - get the family metadata
+        2. var_df - get the variants that are in the family and not in the unaffected #todo - add the option to filter by probands
+        3. peak_id - get the peaks that are in the var_df
+        """
+        cur_family_id = str(family_id)
+        if cur_family_id != self.family_id:
+            self.family_id = cur_family_id
+            self.family_df = self.__set_family_metadata()
+            self.__set_full_variant_df()
+            self.peak_id = self.get_peak_list()[0]
+            self.__set_source_df(self.source)
+
+    def __set_family_metadata(self):
+        if self.family_id is None:
+            print('no family_id')
+            return pd.DataFrame()
+        familiy_df = open_family_matadata()
+        if self.family_list is None:
+            self.family_list = familiy_df.family_id.unique().tolist()
+        family_df = familiy_df[familiy_df.family_id == self.family_id]
+        return family_df
+
+    def get_family_metadata(self):
+        if self.family_id is None:
+            print('no family_id')
+            return pd.DataFrame()
+        return self.family_df
+
+    def set_peak_id(self, peak_id):
+        self.peak_id = peak_id
+
+
+    def set_peak_id(self, peak_id):
+        self.peak_id = peak_id
+
+    @timer_decorator
+    def __set_full_variant_df(self):
+        family_df = self.get_family_metadata()
+        #get the probands and unaffecteds
+        probands = family_df[family_df['fam_relation'] == PROBAND_RELATION].ID
+        unaffected = family_df[family_df['fam_relation'] == UNAFFECTED_SIBILING].ID
+        # create maske of all variants where all prband have and can not be found in unaffected
+        variant_df = pd.read_csv(VARIANT_INHERITENCE_FILE)
+        variant_df.CHROM = variant_df.CHROM.str.replace('chr','')
+        mask_probands = get_variant_mask(variant_df,probands, 'all')
+        unaffected_mask = get_variant_mask(variant_df, unaffected, 'any')
+        mask = mask_probands & ~unaffected_mask
+        result =  variant_df[mask]
+        self.var_df = result
+
+    def get_tfbs_filtered_df(self, one_per_site=True):
+        source_df = self.get_source_df()
+        peak = self.get_peak_data().to_dict('records')[0]
+        tfbs_df = source_df[(source_df.chr == peak['CHROM']) & (source_df.start >= peak['from']) & (source_df.end <= peak['to'])]
+        tfbs_df = tfbs_df[tfbs_df.score >= self.score_threshold]
+        if one_per_site:
+            tfbs_df = max_score_per_coord(tfbs_df)
+        return tfbs_df
+
+    
+    def get_variant_df(self,  to_filter= True):
+        var_df = self.var_df[self.var_df.INTERVAL_ID == self.peak_id].copy()
+        print (f'getting variant_df.family_id: {self.family_id}, peak_id: {self.peak_id}')
+        if to_filter:
+            family_ids = self.get_family_metadata().ID
+            gt_cols = [f'{sample_id}:GT' for sample_id in family_ids]
+            relevant_cols = VAR_DF_COLS_TO_KEEP + gt_cols
+            var_df = var_df[relevant_cols] 
+        print(f'shape of var_df: {self.var_df.shape}')
+        return var_df.reset_index(drop=True)
+
+
+    def get_peak_list(self):
+        print(f'updating peak list for family_id: {self.family_id}')
+        print(f'found {self.var_df.shape[0]} variants')
+        print(f'found {self.var_df.INTERVAL_ID.unique().shape[0]} peaks')
+        return self.var_df.INTERVAL_ID.unique().tolist()
+
+
+    def __sum_names(self,names_col):
+        names = set()
+        for i in names_col:
+            names = names |  set(i.split(';'))
+        return len(names)
+
+
+
+    def get_peak_data(self):
+        print(f'getting peak data for peak_id: {self.peak_id}')
+        cols = self.var_df.columns
+        columns = ['INTERVAL_ID', 'CHROM']
+        columns += cols[SEGMENT_ID_COL:LENGTH_COL].tolist() + cols[[TAD_COL]].tolist()
+        columns = [i for i in columns if i in cols and i != 'median_DP']
+        segment_df = self.get_variant_df(to_filter=False)[columns].copy()
+        segment_df.loc[:,'n_probands'] = self.__sum_names(cols[PROBAND_NAMES_COL])
+        segment_df.loc[:,'n_healthy'] = self.__sum_names(cols[HEALTHY_NAMES_COL])
+        result = pd.DataFrame(segment_df.iloc[0,: ])
+        print (f'shape of segment_df: {result.shape}')
+        return result.T
+
+
+    def get_threshold_min_max(self):
+        cur_peak_tfbs = self.get_tfbs_filtered_df()
+        return cur_peak_tfbs['score'].min(), cur_peak_tfbs['score'].max()
+
+
+    
+    def __parse_names(self,names, header):
+        string = f"**{header}**\n"
+        string += ''.join(['- ' + name + '\n' for name in names.split(';')])
+        return string + '\n'
+
+
+
+
+    def get_variant_info(self,var_idx):
+        var_df = self.get_variant_df(to_filter=False)
+        variant = var_df.iloc[var_idx]
+        result = ''
+        for col in ['probands_names', 'healthy_names']:
+            result  += self.__parse_names(variant[col], col.split('_')[0].capitalize())
+        return result
+    
+    
+    def get_peak_conservation(self, peak_dict=None):
+        peak = peak_dict if peak_dict is not None else self.get_peak_data().to_dict('records')[0]
+        chrom = peak['CHROM'] if 'chr' in peak['CHROM'] else f'chr{peak["CHROM"]}'
+        scores = BW.values(chrom, peak['from'], peak['to'])
+        return scores
+    
+    def get_peak_plot(self, n_lines,checked_box):
+        one_per_site = MAX_SCORE_TFBS in checked_box
+        tfbs_df = self.get_tfbs_filtered_df(one_per_site)
+        var_df = self.get_variant_df()
+        peak_dict = self.get_peak_data().to_dict('records')[0]
+        conservation_list = self.get_peak_conservation(peak_dict)
+        show_seq = SHOW_SEQ in checked_box
+        return make_plot(tfbs_df, var_df, peak_dict, conservation_list, n_lines, show_seq)
 
 def get_gt_column_name(sample_id):
     """
@@ -143,12 +425,6 @@ def two_probands_one_unaffected(variants, probands, unaffected):
     return final_variants
 
 
-def get_family_metadata(family_id):
-    
-    family_df = SAMPLE_META_DATA_DF[SAMPLE_META_DATA_DF['family_id'] == str(family_id)]
-    return family_df
-
-
 
 
 def get_variant_mask(variant_df, ids,second_filter = 'all'):
@@ -165,159 +441,5 @@ def get_variant_mask(variant_df, ids,second_filter = 'all'):
     return mask
 
 
-def get_filter_variants_by_peak(family_id, peak_id):
-    var_df = get_filter_variant_df(family_id)
-    result =  var_df[var_df.INTERVAL_ID == peak_id]
-    return result
 
-def get_filter_variant_df(family_id):
-
-    family_df = get_family_metadata(family_id)
-    #get the probands and unaffecteds
-    probands = family_df[family_df['fam_relation'] == PROBAND_RELATION].ID
-    unaffected = family_df[family_df['fam_relation'] == UNAFFECTED_SIBILING].ID
-
-    #get the variants of the family
-    # fam_variants = get_family_variants(probands, variant_df)
-
-
-    # create maske of all variants where all prband have and can not be found in unaffected
-    mask_probands = get_variant_mask(VARIANT_DF,probands, 'all')
-    unaffected_mask = get_variant_mask(VARIANT_DF, unaffected, 'any')
-    mask = mask_probands & ~unaffected_mask
-
-    result =  VARIANT_DF[mask]
-    return result
-
-
-
-#### table functions:
-SEGMENT_ID_COL = 14
-LENGTH_COL = 18
-TAD_COL =11
-PROBAND_NAMES_COL = 22
-HEALTHY_NAMES_COL = 24
-
-def sum_names(names_col):
-    names = set()
-    for i in names_col:
-        names = names |  set(i.split(';'))
-    return len(names)
-    
-def get_peak_data(peak_id):
-    print(f'getting peak data for peak_id: {peak_id}')
-    var_df = VARIANT_DF[VARIANT_DF.INTERVAL_ID == peak_id]
-    cols = var_df.columns
-    columns = ['CHROM'] + cols[SEGMENT_ID_COL:LENGTH_COL].tolist() + cols[[TAD_COL]].tolist() 
-    columns = [i for i in columns if i in cols and i != 'median_DP']
-    segment_df = var_df[columns].copy()
-    segment_df.loc[:,'n_probands'] = sum_names(cols[PROBAND_NAMES_COL])
-    segment_df.loc[:,'n_healthy'] = sum_names(cols[HEALTHY_NAMES_COL])
-    result = pd.DataFrame(segment_df.iloc[0,: ])
-    print (f'shape of segment_df: {result.shape}')
-    return result.T
-
-def get_family_list():
-    return SAMPLE_META_DATA_DF.family_id.unique().tolist()
-
-def get_source_list():
-    return list(SOURCE_DICT.keys())
-
-def get_peak_list(family_id):
-    print(f'updating peak list for family_id: {family_id}')
-    var_df = get_filter_variant_df(family_id)
-    print(f'found {var_df.shape[0]} variants')
-    print(f'found {var_df.INTERVAL_ID.unique().shape[0]} peaks')
-    return var_df.INTERVAL_ID.unique().tolist()
-
-def get_variant_df(family_id, peak_id, to_filter= True):
-    print (f'getting variant_df.family_id: {family_id}, peak_id: {peak_id}')
-    var_df = get_filter_variants_by_peak(str(family_id), peak_id)
-
-    family_ids = get_family_metadata(family_id).ID
-    gt_cols = [f'{sample_id}:GT' for sample_id in family_ids]
-    relevant_cols = VAR_DF_COLS_TO_KEEP + gt_cols
-    # drop_cols = ['FILTER','repeatsMasker']
-    # relevant_cols = [i for i in relevant_cols if i not in drop_cols]
-    var_df = var_df[relevant_cols] if to_filter else var_df
-    print(f'shape of var_df: {var_df.shape}')
-    return var_df.reset_index(drop=True)
-    
-
-
-
-
-
-
-
-
-def parse_names(names, header):
-    string = f"**{header}**\n"
-    string += ''.join(['- ' + name + '\n' for name in names.split(';')])
-    return string + '\n'
-
-def get_variant_info(var_idx, family_id, peak_id):
-    var_df = get_variant_df(family_id, peak_id, to_filter=False)
-
-    variant = var_df.iloc[var_idx]
-    result = ''
-    for col in ['probands_names', 'healthy_names']:
-        result  += parse_names(variant[col], col.split('_')[0].capitalize())
-    return result
-
-def get_peak_conservation(peak_id):
-    peak = PEAK_DF[PEAK_DF.id == peak_id].to_dict('records')[0]
-    scores = BW.values(peak['chrom'], peak['start'], peak['end'])
-    return scores
-
-
-
-#### TFBS table function
-
-def max_score_per_coord(df):
-
-    # Create a new column 'group' to represent overlapping segments with the same 'strand'
-    groups = (df['start'] <= df['end'].shift(1)).tolist()
-    group = 0 
-    i = 0
-    flag = False
-    label = []
-    while i < len(df):
-        cur = groups[i]
-       
-        if cur:
-            if not flag:
-                group += 1
-                label[-1] = group
-                flag = True
-
-            label.append(group)
-        else:
-            group += 1
-            label.append(group)
-            flag = False
-        i += 1
-    df.insert(0,'label',label)
-    # Find the row index with the maximum score for each group
-    df = df.astype({'score': 'int32'})
-    idx_max_score = df.groupby(['label','strand'])['score'].idxmax()
-
-    # Extract the corresponding rows from the DataFrame
-    result_df = df.loc[idx_max_score].drop(columns=['label'])
-
-    return result_df
-
-def get_tfbs_filtered_df(source_name, peak_id, threshold=0, one_per_site=False):
-    source_df = SOURCE_DICT[source_name]
-    peak = PEAK_DF[PEAK_DF.id == peak_id].to_dict('records')[0]
-    tfbs_df = source_df[(source_df.chr == peak['chrom']) & (source_df.start >= peak['start']) & (source_df.end <= peak['end'])]
-    tfbs_df = tfbs_df[tfbs_df.score >= threshold]
-    if one_per_site:
-        tfbs_df = max_score_per_coord(tfbs_df)
-    return tfbs_df
-
-
-def get_threshold_min_max(source_name, peak_id):
-    source_df = get_tfbs_filtered_df(source_name, peak_id)
-    return source_df['score'].min(), source_df['score'].max()
 
