@@ -17,11 +17,11 @@ SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
+JASPAR_FILE = 'data/jaspar2024TFBSresults_f350.prq'
 
-HOMER_FILE = 'data/homer_TFBS_results.prq'
+HOMER_FILE = 'data/homer_TFBS_results_f7581.prq'
 
-PEAK_FILE = 'data/merged_mATAC_hATAC_0507.bed.gz'
+
 SAMPLE_META_DATA_FILE = 'data/sample_metadata.csv'
 VARIANT_INHERITENCE_FILE = 'data/all_vars.csv'
 
