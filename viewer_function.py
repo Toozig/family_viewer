@@ -27,7 +27,6 @@ def get_seq(enh_dict, email):
 
 #### plot function
 
-
 def get_variant_features(variants: pd.DataFrame ):
     yellow_pastel = "#FFFFCC"
 

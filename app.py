@@ -85,7 +85,7 @@ def get_peak_plot(peak, source, score_threshold, family, n_lines, checkbox):
         print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}, n_lines: {n_lines}')
         app_stats.get_peak_plot(n_lines, checkbox)
 
-with ui.layout_columns(col_widths=[6, 6, 12]):
+with ui.layout_columns(col_widths=[6, 6, 12],height='20vh'):
     with ui.card(full_screen=True):
 
         ui.card_header("family data")
@@ -110,7 +110,7 @@ with ui.card(full_screen=True):
         print('updating plot')
         get_peak_plot(input.peak(), input.source(), input.score_threshold(), input.family(), input.n_lines(), input.checkbox())
 
-with ui.layout_columns(col_widths=[6, 6, 12]):
+with ui.layout_columns(col_widths=[6, 6, 12],height='20vh'):
     with ui.card():
         ui.card_header("Peak variants")
         @render.data_frame
@@ -126,7 +126,7 @@ with ui.layout_columns(col_widths=[6, 6, 12]):
         string = app_stats.get_variant_info(index)
         return string
 
-    with ui.card():
+    with ui.card(width='15vh'):
 
         ui.card_header("variant information")
         @render.ui

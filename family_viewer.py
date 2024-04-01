@@ -16,22 +16,14 @@ MAX_SCORE_TFBS = 'maximal score TFBS per site'
 SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
-# CONSERVATION_FILE = '/dsi/gonen-lab/users/roni/useful_files/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-# JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
-JASPAR_FILE = 'data/jaspar2024TFBSresults_f350.prq'
-# HOMER_FILE = 'data/homer_TFBS_results.prq'
-HOMER_FILE = 'data/homer_TFBS_results_f7581.prq'
-# JASPAR_FILE = '/dsi/gonen-lab/users/roni/useful_files/outputs/jaspar2024TFBSresults.prq'
-# HOMER_FILE = '/dsi/gonen-lab/users/roni/useful_files/outputs/homer_TFBS_results.prq'
-# VARIANT_INHERITENCE_FILE = '/dsi/gonen-lab/shared_files/WGS_on_DSD/data/pipeline_outputs/variants_with_layers/2024-01-11/inheritance/all_vars.csv'
+JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
+
+HOMER_FILE = 'data/homer_TFBS_results.prq'
+
 PEAK_FILE = 'data/merged_mATAC_hATAC_0507.bed.gz'
 SAMPLE_META_DATA_FILE = 'data/sample_metadata.csv'
 VARIANT_INHERITENCE_FILE = 'data/all_vars.csv'
-# PEAK_FILE = '/dsi/gonen-lab/users/toozig/projects/WT_canidate_enhancer/data/merged_mATAC_hATAC_0507.bed.gz'
-# SAMPLE_META_DATA_FILE = '/dsi/gonen-lab/shared_files/WGS_on_DSD/data/read_only/samples/sample_metadata.xlsx'
-# VARIANT_INHERITENCE_FILE = '/dsi/gonen-lab/users/roni/DSDncVariants/variants_pipeline/2024-01-11/inheritance/all_vars.csv'
-
 
 PROBAND_RELATION = 0
 UNAFFECTED_SIBILING = 3
