@@ -2,8 +2,19 @@ from Bio import  Entrez, SeqIO
 from dna_features_viewer import GraphicFeature, GraphicRecord
 import pandas as pd
 import seaborn as sns
+
+import argparse
+from pygenometracks.tracksClass import PlotTracks
+from pygenometracks.plotTracks import parse_arguments
+#from pygenometracks._version import __version__
+from pygenometracks.utilities import InputError, get_region
+import matplotlib.pyplot as plt
+import numpy as np
+
+
 MAX_SCORE_TFBS = 'maximal score TFBS per site'
 SHOW_SEQ = 'Show sequence'
+DEFAULT_FIGURE_WIDTH = 40  # in centimeters
 
 
 
@@ -55,38 +66,49 @@ def plot_get_bs_feature(seq_df, bs_col, cmap='pastel'):
                                         ), axis=1)
 
 
-def make_plot(tfbs_df: pd.DataFrame ,
-              var_df: pd.DataFrame,
-              enh_dict: dict,
-              conservation: list,
-             n_lines: int,
-             show_seq: bool):
-    
-    tfbs_df = tfbs_df.copy()
-    var_df = var_df.copy()
+def make_plot(config_file: str,
+              enh_dict: dict):
+    peak_str = f'{enh_dict["CHROM"]}:{enh_dict["from"]}-{enh_dict["to"]}'
+    ARGS = [
+    "--tracks", config_file,
+    "--region", peak_str,
+    "--trackLabelFraction", "0.2",
+    "--dpi", "130",
+    "--trackLabelHAlign", "center",
+    "-o", "tmp.png"
+    ]
 
-    features = plot_get_bs_feature(tfbs_df,'name').tolist()
+    args = parse_arguments().parse_args(ARGS)
+        # Identify the regions to plot:
+    if args.BED:
+        regions = []
+        for line in args.BED.readlines():
+            try:
+                chrom, start, end = line.strip().split('\t')[0:3]
+            except ValueError:
+                continue
+            try:
+                start, end = map(int, [start, end])
+            except ValueError as detail:
+                warnings.warn(f"Invalid value found at line\t{line}\t. {detail}\n")
+                continue
+            regions.append((chrom, start, end))
+    else:
+        regions = [get_region(args.region)]
 
-    labels = '>>>>' + (pd.Series(range(len(var_df))) + 1).astype('str') + '<<<<'
-    var_df.insert(0,'label',labels.tolist())
+    if len(regions) == 0:
+        raise InputError("There is no valid regions to plot.")
 
-    var_df = var_df.astype({'label':str})
-    features += get_variant_features(var_df).tolist()
-    seq_len = enh_dict['to'] - enh_dict['from']
-    
+    # Create all the tracks
+    trp = PlotTracks(args.tracks.name, args.width, fig_height=args.height,
+                     fontsize=args.fontSize, dpi=args.dpi,
+                     track_label_width=args.trackLabelFraction,
+                     plot_regions=regions, plot_width=args.plotWidth)
 
-    enh13 = GraphicRecord(sequence_length=seq_len,
-                              sequence = None if not show_seq else get_seq(enh_dict, 'manoneh322@konican.com') ,
-                          features=features,
-                          first_index=enh_dict['from'] ) 
-    # plot the enhancer
-    all_enh = enh13.plot_on_multiple_lines_with_density(n_lines=round(n_lines),
-                                                        nucl_per_line=2000,
-                                                        plot_sequence=show_seq,
-                                                        figure_width=15,
-                                                        density_list = conservation,
-                                                        density_label='conservation')
-    return all_enh
+    current_fig = trp.plot(args.outFileName, *regions[0], title=args.title,
+                               h_align_titles=args.trackLabelHAlign,
+                               decreasing_x_axis=args.decreasingXAxis)
+    return current_fig
 
 
 
