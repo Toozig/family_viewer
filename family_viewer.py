@@ -17,11 +17,12 @@ SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
+JASPAR_FILE = 'data/TFBStools_results_filtered.prq'
 
 HOMER_FILE = 'data/homer_TFBS_results.prq'
 
 PEAK_FILE = 'data/merged_mATAC_hATAC_0507.bed.gz'
+CONFIG_FILE = 'data/config.ini'
 SAMPLE_META_DATA_FILE = 'data/sample_metadata.csv'
 VARIANT_INHERITENCE_FILE = 'data/all_vars.csv'
 
@@ -219,17 +220,14 @@ class currentState:
         return family_df
 
     def get_family_metadata(self):
-        if self.family_id is None:
-            print('no family_id')
-            return pd.DataFrame()
         return self.family_df
 
     def set_peak_id(self, peak_id):
+        if peak_id not in self.get_peak_list():
+            print(f'peak_id: {peak_id} not in the list')
+            return
         self.peak_id = peak_id
 
-
-    def set_peak_id(self, peak_id):
-        self.peak_id = peak_id
 
     @timer_decorator
     def __set_full_variant_df(self):
@@ -338,7 +336,8 @@ class currentState:
         peak_dict = self.get_peak_data().to_dict('records')[0]
         conservation_list = self.get_peak_conservation(peak_dict)
         show_seq = SHOW_SEQ in checked_box
-        return make_plot(tfbs_df, var_df, peak_dict, conservation_list, n_lines, show_seq)
+        print(f'getting plot')
+        return make_plot(CONFIG_FILE, peak_dict)
 
 def get_gt_column_name(sample_id):
     """
@@ -439,7 +438,3 @@ def get_variant_mask(variant_df, ids,second_filter = 'all'):
     elif second_filter == 'any':
         mask = mask.any(axis=1)
     return mask
-
-
-
-
