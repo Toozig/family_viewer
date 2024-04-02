@@ -17,7 +17,7 @@ SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-JASPAR_FILE = 'data/TFBStools_results_filtered.prq'
+JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
 
 HOMER_FILE = 'data/homer_TFBS_results.prq'
 
