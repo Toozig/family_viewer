@@ -17,9 +17,9 @@ SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-JASPAR_FILE = 'data/jaspar2024TFBSresults_f350.prq'
+JASPAR_FILE = 'data/parsed_jaspar_in_ATAC_intervals_updated_key_tf_score400.prq'
 
-HOMER_FILE = 'data/homer_TFBS_results_f7581.prq'
+HOMER_FILE = 'data/homer.prq'
 
 
 PEAK_FILE = 'data/merged_mATAC_hATAC_0507.bed.gz'
@@ -271,7 +271,9 @@ class currentState:
         print(f'updating peak list for family_id: {self.family_id}')
         print(f'found {self.var_df.shape[0]} variants')
         print(f'found {self.var_df.INTERVAL_ID.unique().shape[0]} peaks')
-        return self.var_df.INTERVAL_ID.unique().tolist()
+        peak_list =self.var_df.INTERVAL_ID.unique().tolist()
+        sorted(peak_list)
+        return peak_list
 
 
     def __sum_names(self,names_col):
@@ -330,7 +332,7 @@ class currentState:
         scores = BW.values(chrom, peak['from'], peak['to'])
         return scores
     
-    def get_peak_plot(self, n_lines,checked_box):
+    def get_peak_plot(self,checked_box):
         one_per_site = MAX_SCORE_TFBS in checked_box
         tfbs_df = self.get_tfbs_filtered_df(one_per_site)
         var_df = self.get_variant_df()

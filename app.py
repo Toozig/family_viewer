@@ -30,14 +30,14 @@ min_val, max_val = app_stats.get_threshold_min_max()
 
 
 ui.page_opts(title="Family Viewer", fillable=True)
-with ui.sidebar():
+with ui.sidebar(width='25vh'):
     # "Sidebar (input)"
     ui.input_selectize(FAMILY, "Family", family_list)
     ui.input_selectize(PEAK, 'Peak',peak_list)
     ui.input_selectize(SOURCE, 'Source',source_list)
     ui.input_slider(SCORE_THRESHOLD, 'Score Threshold',min=min_val, max=max_val, step=1, value=400)
     ui.input_checkbox_group(CHECKBOX, 'Options', CHECKBOX_OPT)
-    ui.input_numeric(N_LINES, 'Number of lines', 2)
+    #ui.input_numeric(N_LINES, 'Number of lines', 2)
 
 
 # this is how to change the peak list based on the family selection
@@ -80,12 +80,12 @@ def set_source():
     app_stats.set_source(input.source())
 
 
-def get_peak_plot(peak, source, score_threshold, family, n_lines, checkbox):
+def get_peak_plot(peak, source, score_threshold, family, checkbox):
         print(f'getting plot')
-        print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}, n_lines: {n_lines}')
-        app_stats.get_peak_plot(n_lines, checkbox)
+        print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}')
+        app_stats.get_peak_plot(checkbox)
 
-with ui.layout_columns(col_widths=[6, 6, 12],height='20vh'):
+with ui.layout_columns(col_widths=[8,4, 12],height='20vh'):
     with ui.card(full_screen=True):
 
         ui.card_header("family data")
@@ -99,8 +99,12 @@ with ui.layout_columns(col_widths=[6, 6, 12],height='20vh'):
         ui.card_header("peak data")
         @render.data_frame
         def peak_details():
-            return render.DataGrid(update_peak_data(),  row_selection_mode="single")
-
+            df = update_peak_data()[['INTERVAL_ID','CHROM','from','to','length']]
+            return render.DataGrid(df,  row_selection_mode="single")
+        @render.data_frame
+        def peak_details2():
+            df = update_peak_data()[['DSDgenes_1_5mb','n_probands','n_healthy']]
+            return render.DataGrid(df,  row_selection_mode="single")
 
 with ui.card(full_screen=True):
     # ui.card_header("peak data")
@@ -108,9 +112,9 @@ with ui.card(full_screen=True):
     @render.plot()
     def track_plot():
         print('updating plot')
-        get_peak_plot(input.peak(), input.source(), input.score_threshold(), input.family(), input.n_lines(), input.checkbox())
+        get_peak_plot(input.peak(), input.source(), input.score_threshold(), input.family(), input.checkbox())
 
-with ui.layout_columns(col_widths=[6, 6, 12],height='20vh'):
+with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
     with ui.card():
         ui.card_header("Peak variants")
         @render.data_frame

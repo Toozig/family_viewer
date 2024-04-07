@@ -1,5 +1,5 @@
 from Bio import  Entrez, SeqIO
-from dna_features_viewer import GraphicFeature, GraphicRecord
+# from dna_features_viewer import GraphicFeature, GraphicRecord
 import pandas as pd
 import seaborn as sns
 
@@ -90,8 +90,7 @@ def make_plot(config_file: str,
             try:
                 start, end = map(int, [start, end])
             except ValueError as detail:
-                warnings.warn(f"Invalid value found at line\t{line}\t. {detail}\n")
-                continue
+                    raise ValueError(f"Invalid value found at line\t{line}\t. {detail}\n")
             regions.append((chrom, start, end))
     else:
         regions = [get_region(args.region)]
