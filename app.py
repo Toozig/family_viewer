@@ -1,7 +1,7 @@
 from shiny.express import input, render, ui
-from shiny import reactive, req
+from shiny import reactive
 from family_viewer import  currentState
-from viewer_function import get_peak_plot, MAX_SCORE_TFBS, SHOW_SEQ
+from viewer_function import  MAX_SCORE_TFBS, SHOW_SEQ
 
 
 FAMILY = 'family'
@@ -35,10 +35,33 @@ with ui.sidebar(width='25vh'):
     ui.input_selectize(FAMILY, "Family", family_list)
     ui.input_selectize(PEAK, 'Peak',peak_list)
     ui.input_selectize(SOURCE, 'Source',source_list)
-    ui.input_slider(SCORE_THRESHOLD, 'Score Threshold',min=min_val, max=max_val, step=1, value=400)
+    # ui.input_slider(SCORE_THRESHOLD, 'Score Threshold',min=min_val, max=max_val, step=1, value=400)
     ui.input_checkbox_group(CHECKBOX, 'Options', CHECKBOX_OPT)
-    #ui.input_numeric(N_LINES, 'Number of lines', 2)
+    ui.input_numeric(N_LINES, 'Number of lines', 2)
+    ui.input_numeric('add_bp', 'see more bp', 500)
+    with ui.layout_columns():
+        ui.input_action_button("upstream", "upstream" )
+        ui.input_action_button("downstream", "downstream")
+    ui.input_action_button("reset", "reset view")
 
+@reactive.effect
+@reactive.event(input.downstream)
+def add_downstream():
+    print(input.downstream())
+    app_stats.add_downstream(input.add_bp())
+    print(f'adding downstream {input.add_bp()}')
+
+@reactive.effect
+@reactive.event(input.upstream)
+def add_upstream():
+    print(input.upstream())
+    app_stats.add_upstream(input.add_bp())
+
+@reactive.effect
+@reactive.event(input.reset)
+def reset_view():
+    print(input.reset())
+    app_stats.reset_view()
 
 # this is how to change the peak list based on the family selection
 @reactive.effect
@@ -48,12 +71,12 @@ def change_peak_list():
     ui.update_selectize(PEAK, choices=choices)
 
 # this is to update the slider based on the source and peak selection
-@reactive.effect
-def change_score_threshold():
-    print(f'changing score threshold for {input.source()} and {input.peak()}')
-    min_score, max_score = app_stats.get_threshold_min_max()
-    min_score, max_score = int(min_score), int(max_score)
-    ui.update_slider(SCORE_THRESHOLD, min=min_score, max=max_score, value=min(400, max_score))
+# @reactive.effect
+# def change_score_threshold():
+#     print(f'changing score threshold for {input.source()} and {input.peak()}')
+#     min_score, max_score = app_stats.get_threshold_min_max()
+#     min_score, max_score = int(min_score), int(max_score)
+#     ui.update_slider(SCORE_THRESHOLD, min=min_score, max=max_score, value=min(400, max_score))
 
 @reactive.calc
 def update_family_details():
@@ -80,13 +103,19 @@ def set_source():
     app_stats.set_source(input.source())
 
 
-def get_peak_plot(peak, source, score_threshold, family, checkbox):
+def get_track_plot(peak, family):
         print(f'getting plot')
-        print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}')
-        app_stats.get_peak_plot(checkbox)
+        print(f'peak: {peak}, source: family: {family}')
+        app_stats.get_track_plot()
+
+
+def get_TFBS_plot(peak, source, score_threshold, family, n_lines, checkbox):
+        print(f'getting plot')
+        print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}, n_lines: {n_lines}')
+        app_stats.get_TFBS_plot(n_lines, checkbox)
 
 with ui.layout_columns(col_widths=[8,4, 12],height='20vh'):
-    with ui.card(full_screen=True):
+    with ui.card():
 
         ui.card_header("family data")
 
@@ -95,31 +124,45 @@ with ui.layout_columns(col_widths=[8,4, 12],height='20vh'):
             return render.DataGrid(update_family_details(),  row_selection_mode="multiple")
         
 
-    with ui.card(full_screen=True):
+    with ui.card():
         ui.card_header("peak data")
         @render.data_frame
         def peak_details():
             df = update_peak_data()[['INTERVAL_ID','CHROM','from','to','length']]
             return render.DataGrid(df,  row_selection_mode="single")
+        
         @render.data_frame
         def peak_details2():
-            df = update_peak_data()[['DSDgenes_1_5mb','n_probands','n_healthy']]
+            df = update_peak_data()[['distance_from_nearest_DSD_TSS','n_probands','n_healthy']]
             return render.DataGrid(df,  row_selection_mode="single")
 
 with ui.card(full_screen=True):
     # ui.card_header("peak data")
-  
+
     @render.plot()
     def track_plot():
         print('updating plot')
-        get_peak_plot(input.peak(), input.source(), input.score_threshold(), input.family(), input.checkbox())
+        print(f'{input.downstream()}')
+        print(f'{input.upstream()}')
+        input.reset()
+        get_track_plot(input.peak(), input.family())
+
+with ui.card(full_screen=True):
+    # ui.card_header("peak data")
+    @render.plot()
+    def TFBS_plot():
+        print('updating plot')
+        get_TFBS_plot(input.peak(), input.source(), 0, input.family(), input.n_lines() ,input.checkbox())
 
 with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
     with ui.card():
         ui.card_header("Peak variants")
         @render.data_frame
         def variant_list():
-            return render.DataGrid(update_variant_list(),  row_selection_mode="single")
+            df = update_variant_list()
+            df = df.reset_index()
+            df['index'] = df['index'] + 1
+            return render.DataGrid(df,  row_selection_mode="single")
 
 
     @reactive.calc
@@ -139,3 +182,4 @@ with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
             print(string)   
             return ui.markdown(string)
         # ui.markdown("** hey! **")
+
