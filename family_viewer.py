@@ -162,6 +162,7 @@ class currentState:
             cls._instance.peak_id = None
             cls._instance.more_upstream = 0
             cls._instance.more_downstream = 0
+            cls._instance.cur_plot_view = None
             cls._instance.source_df = None
             cls._instance.var_df = None
             source_list = cls.get_source_list()
@@ -194,6 +195,8 @@ class currentState:
             print('no source')
             return pd.DataFrame()
         return self.source_df
+    
+
 
     def set_family_id(self, family_id):
         """
@@ -210,6 +213,11 @@ class currentState:
             self.__set_full_variant_df()
             self.peak_id = self.get_peak_list()[0]
             self.__set_source_df(self.source)
+            self.__reset_plot_view()
+
+    def __reset_plot_view(self):
+            self.cur_plot_view = self.get_peak_data().to_dict('records')[0]
+
 
     def __set_family_metadata(self):
         if self.family_id is None:
@@ -341,13 +349,29 @@ class currentState:
         self.more_downstream += downstream
     
     def reset_view(self):
+        self.cur_plot_view = self.get_peak_data().to_dict('records')[0]
         self.more_upstream = 0
         self.more_downstream = 0
 
+    def set_plot_from_variant(self, index):
+        """
+        return True if the plot view was changed
+        """
+        var_df = self.get_variant_df(to_filter=False)
+        variant = var_df.iloc[index]
+        if   variant['POS'] - 250 == self.cur_plot_view['from'] and variant['POS'] + 250 == self.cur_plot_view['to']:
+            return False
+        self.more_upstream = 0
+        print(f'setting plot from variant: {variant["POS"]}')
+        self.cur_plot_view['from'] = variant['POS'] - 250
+        self.cur_plot_view['to'] = variant['POS'] + 250
+        return True
+
     def get_track_plot(self):
-        peak_dict = self.get_peak_data().to_dict('records')[0]
+        peak_dict = self.cur_plot_view
         peak_dict['from'] -= self.more_upstream
         peak_dict['to'] += self.more_downstream
+        print(f'getting track plot - from-{peak_dict["from"]}, to-{peak_dict["to"]}')
         print(f'getting track plot')
         return make_track_plot(CONFIG_FILE, peak_dict)
     

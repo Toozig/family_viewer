@@ -1,5 +1,5 @@
 from shiny.express import input, render, ui
-from shiny import reactive
+from shiny import reactive, req
 from family_viewer import  currentState
 from viewer_function import  MAX_SCORE_TFBS, SHOW_SEQ
 
@@ -43,6 +43,10 @@ with ui.sidebar(width='25vh'):
         ui.input_action_button("upstream", "upstream" )
         ui.input_action_button("downstream", "downstream")
     ui.input_action_button("reset", "reset view")
+    ui.input_checkbox('focus','focus on click', True)
+
+
+update_plot = reactive.value(False)
 
 @reactive.effect
 @reactive.event(input.downstream)
@@ -89,6 +93,7 @@ def update_peak_data():
     print(f'updating peak data for {input.peak()}')
     app_stats.set_peak_id(input.peak())
     cur_peak_df =  app_stats.get_peak_data()
+    app_stats.reset_view()
     # cur_peak_df =  get_peak_data(input.peak())
     return cur_peak_df
 
@@ -142,17 +147,18 @@ with ui.card(full_screen=True):
     @render.plot()
     def track_plot():
         print('updating plot')
+        update_plot.get()
         print(f'{input.downstream()}')
         print(f'{input.upstream()}')
         input.reset()
         get_track_plot(input.peak(), input.family())
 
-with ui.card(full_screen=True):
-    # ui.card_header("peak data")
-    @render.plot()
-    def TFBS_plot():
-        print('updating plot')
-        get_TFBS_plot(input.peak(), input.source(), 0, input.family(), input.n_lines() ,input.checkbox())
+# with ui.card(full_screen=True):
+#     # ui.card_header("peak data")
+#     @render.plot()
+#     def TFBS_plot():
+#         print('updating plot')
+#         get_TFBS_plot(input.peak(), input.source(), 0, input.family(), input.n_lines() ,input.checkbox())
 
 with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
     with ui.card():
@@ -162,7 +168,7 @@ with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
             df = update_variant_list()
             df = df.reset_index()
             df['index'] = df['index'] + 1
-            return render.DataGrid(df,  row_selection_mode="single")
+            return render.DataGrid(df,  row_selection_mode="multiple")
 
 
     @reactive.calc
@@ -182,4 +188,15 @@ with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
             print(string)   
             return ui.markdown(string)
         # ui.markdown("** hey! **")
+
+    @reactive.effect
+    @reactive.event(input.variant_list_selected_rows)
+    def change_focus():
+        req(input.variant_list_selected_rows())
+        if input.focus():
+            index = input.variant_list_selected_rows()[0]
+            print(f'changing focus to {index}')
+            if app_stats.set_plot_from_variant(index):
+                update_plot.set(not update_plot.get())
+
 
