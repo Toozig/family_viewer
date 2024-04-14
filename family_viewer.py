@@ -1,6 +1,6 @@
 import pandas as pd
 import pyBigWig
-from viewer_function import make_plot
+from viewer_function import make_track_plot, make_TFBS_plot
 import time
 
 def timer_decorator(func):
@@ -17,9 +17,10 @@ SHOW_SEQ = 'Show sequence'
 
 CONSERVATION_FILE = 'data/hg38.phastCons7way.atacIntervals.bw'
 # TFBS Files
-JASPAR_FILE = 'data/jaspar2024TFBSresults.prq'
+JASPAR_FILE = 'data/TFBStools_99_oneMatrix_filtered.prq'
 
-HOMER_FILE = 'data/homer_TFBS_results.prq'
+HOMER_FILE = 'data/homer.prq'
+
 
 PEAK_FILE = 'data/merged_mATAC_hATAC_0507.bed.gz'
 CONFIG_FILE = 'data/config.ini'
@@ -66,10 +67,9 @@ BW = pyBigWig.open(CONSERVATION_FILE)
 # SOURCE_DICT = {'JASPAR': JASPER_DF,
 #                 'HOMER': HOMER_DF}
 
-SOURCE_DICT = {'JASPAR': JASPAR_FILE,
-                'HOMER': HOMER_FILE}
+SOURCE_DICT = {'JASPAR': JASPAR_FILE}
 
-SCORE_DEFAULT_THRESHOLD = {'JASPAR': 400,
+SCORE_DEFAULT_THRESHOLD = {'JASPAR': 0,
                            'HOMER': 7}
 
 
@@ -144,22 +144,25 @@ class currentState:
     def get_family_list(cls):
         if cls.family_list is None:
             family_metadata =  open_family_matadata()
-            cls.family_list = family_metadata.family_id.unique().tolist()
+            cls.family_list = sorted(family_metadata.family_id.unique().tolist())
         return cls.family_list
 
 
     @classmethod
     def get_source_list(cls):
-        return list(SOURCE_DICT.keys())
+        return sorted(list(SOURCE_DICT.keys()))
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(currentState, cls).__new__(cls)
-            cls._instance.score_threshold = 400
+            cls._instance.score_threshold = 0
             cls._instance.family_id = None
             cls._instance.family_df = None
             # init by set_family
             cls._instance.peak_id = None
+            cls._instance.more_upstream = 0
+            cls._instance.more_downstream = 0
+            cls._instance.cur_plot_view = None
             cls._instance.source_df = None
             cls._instance.var_df = None
             source_list = cls.get_source_list()
@@ -192,6 +195,8 @@ class currentState:
             print('no source')
             return pd.DataFrame()
         return self.source_df
+    
+
 
     def set_family_id(self, family_id):
         """
@@ -208,6 +213,11 @@ class currentState:
             self.__set_full_variant_df()
             self.peak_id = self.get_peak_list()[0]
             self.__set_source_df(self.source)
+            self.__reset_plot_view()
+
+    def __reset_plot_view(self):
+            self.cur_plot_view = self.get_peak_data().to_dict('records')[0]
+
 
     def __set_family_metadata(self):
         if self.family_id is None:
@@ -270,7 +280,9 @@ class currentState:
         print(f'updating peak list for family_id: {self.family_id}')
         print(f'found {self.var_df.shape[0]} variants')
         print(f'found {self.var_df.INTERVAL_ID.unique().shape[0]} peaks')
-        return self.var_df.INTERVAL_ID.unique().tolist()
+        peak_list =self.var_df.INTERVAL_ID.unique().tolist()
+        return sorted(peak_list)
+     
 
 
     def __sum_names(self,names_col):
@@ -285,7 +297,7 @@ class currentState:
         print(f'getting peak data for peak_id: {self.peak_id}')
         cols = self.var_df.columns
         columns = ['INTERVAL_ID', 'CHROM']
-        columns += cols[SEGMENT_ID_COL:LENGTH_COL].tolist() + cols[[TAD_COL]].tolist()
+        columns += cols[SEGMENT_ID_COL:LENGTH_COL].tolist() + cols[[TAD_COL]].tolist() + ['distance_from_nearest_DSD_TSS']
         columns = [i for i in columns if i in cols and i != 'median_DP']
         segment_df = self.get_variant_df(to_filter=False)[columns].copy()
         segment_df.loc[:,'n_probands'] = self.__sum_names(cols[PROBAND_NAMES_COL])
@@ -329,15 +341,48 @@ class currentState:
         scores = BW.values(chrom, peak['from'], peak['to'])
         return scores
     
-    def get_peak_plot(self, n_lines,checked_box):
+
+    def add_upstream(self, upstream):
+        self.more_upstream += upstream
+    
+    def add_downstream(self, downstream):
+        self.more_downstream += downstream
+    
+    def reset_view(self):
+        self.cur_plot_view = self.get_peak_data().to_dict('records')[0]
+        self.more_upstream = 0
+        self.more_downstream = 0
+
+    def set_plot_from_variant(self, index):
+        """
+        return True if the plot view was changed
+        """
+        var_df = self.get_variant_df(to_filter=False)
+        variant = var_df.iloc[index]
+        if   variant['POS'] - 250 == self.cur_plot_view['from'] and variant['POS'] + 250 == self.cur_plot_view['to']:
+            return False
+        self.more_upstream = 0
+        print(f'setting plot from variant: {variant["POS"]}')
+        self.cur_plot_view['from'] = variant['POS'] - 250
+        self.cur_plot_view['to'] = variant['POS'] + 250
+        return True
+
+    def get_track_plot(self):
+        peak_dict = self.cur_plot_view
+        peak_dict['from'] -= self.more_upstream
+        peak_dict['to'] += self.more_downstream
+        print(f'getting track plot - from-{peak_dict["from"]}, to-{peak_dict["to"]}')
+        print(f'getting track plot')
+        return make_track_plot(CONFIG_FILE, peak_dict)
+    
+    def get_TFBS_plot(self, n_lines,checked_box):
         one_per_site = MAX_SCORE_TFBS in checked_box
         tfbs_df = self.get_tfbs_filtered_df(one_per_site)
         var_df = self.get_variant_df()
         peak_dict = self.get_peak_data().to_dict('records')[0]
         conservation_list = self.get_peak_conservation(peak_dict)
         show_seq = SHOW_SEQ in checked_box
-        print(f'getting plot')
-        return make_plot(CONFIG_FILE, peak_dict)
+        return make_TFBS_plot(tfbs_df, var_df, peak_dict, conservation_list, n_lines, show_seq)
 
 def get_gt_column_name(sample_id):
     """
