@@ -120,36 +120,26 @@ def get_TFBS_plot(peak, source, score_threshold, family, n_lines, checkbox):
         app_stats.get_TFBS_plot(n_lines, checkbox)
 
 with ui.layout_columns(col_widths=[8,4, 12],height='20vh'):
-
-    with ui.card():
-        ui.card_header("family variants")
-
-        
-        @render.data_frame
-        def family_variants():
-            print(f'updating family variants for {input.family()}')
-            return render.DataGrid( app_stats.get_view_all_variants(),  row_selection_mode="single")
-
-
-        @reactive.effect
-        @reactive.event(input.family_variants_selected_rows)
-        def change_track_by_family_var():
-            req(input.family_variants_selected_rows())
-
-            index = input.family_variants_selected_rows()[0]
-            print(f'changing focus to {index}')
-            if app_stats.set_plot_from_family_variant(index):
-                update_plot.set(not update_plot.get())
-
-
     with ui.card():
 
         ui.card_header("family data")
+
         @render.data_frame
         def family_details():
             return render.DataGrid(update_family_details(),  row_selection_mode="multiple")
         
 
+    with ui.card():
+        ui.card_header("peak data")
+        @render.data_frame
+        def peak_details():
+            df = update_peak_data()[['INTERVAL_ID','CHROM','from','to','length']]
+            return render.DataGrid(df,  row_selection_mode="single")
+        
+        @render.data_frame
+        def peak_details2():
+            df = update_peak_data()[['distance_from_nearest_DSD_TSS','n_probands','n_healthy']]
+            return render.DataGrid(df,  row_selection_mode="single")
 
 with ui.card(full_screen=True):
     # ui.card_header("peak data")
@@ -170,21 +160,7 @@ with ui.card(full_screen=True):
 #         print('updating plot')
 #         get_TFBS_plot(input.peak(), input.source(), 0, input.family(), input.n_lines() ,input.checkbox())
 
-with ui.layout_columns(col_widths=[4,4, 4, 12],height='20vh'):
-
-    with ui.card():
-        ui.card_header("peak data")
-        @render.data_frame
-        def peak_details():
-            df = update_peak_data()[['INTERVAL_ID','CHROM','from','to','length']]
-            return render.DataGrid(df,  row_selection_mode="single")
-        
-        @render.data_frame
-        def peak_details2():
-            df = update_peak_data()[['distance_from_nearest_DSD_TSS','n_probands','n_healthy']]
-            return render.DataGrid(df,  row_selection_mode="single")
-        
-
+with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
     with ui.card():
         ui.card_header("Peak variants")
         @render.data_frame
