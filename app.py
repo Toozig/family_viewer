@@ -3,25 +3,15 @@ from shiny import reactive, req
 from family_viewer import  currentState
 from viewer_function import  MAX_SCORE_TFBS, SHOW_SEQ
 
-
 FAMILY = 'family'
-PEAK = 'peak'
-SOURCE = 'source'
-CHECKBOX = 'checkbox'
-N_LINES = 'n_lines'
-SCORE_THRESHOLD = 'score_threshold'
+PEAK = 'peak_list'
 
-
-CHECKBOX_OPT = [MAX_SCORE_TFBS,
-                    SHOW_SEQ]
 
 
 app_stats = currentState()
 
 family_list = currentState.get_family_list()
-source_list = currentState.get_source_list()
 
-# todo: fix this - nreed to init the object and then get the list
 peak_list = app_stats.get_peak_list()
 min_val, max_val = app_stats.get_threshold_min_max()
 
@@ -30,57 +20,33 @@ min_val, max_val = app_stats.get_threshold_min_max()
 
 
 ui.page_opts(title="Family Viewer", fillable=True)
-with ui.sidebar(width='25vh'):
-    # "Sidebar (input)"
-    ui.input_selectize(FAMILY, "Family", family_list)
-    ui.input_selectize(PEAK, 'Peak',peak_list)
-    ui.input_selectize(SOURCE, 'Source',source_list)
-    # ui.input_slider(SCORE_THRESHOLD, 'Score Threshold',min=min_val, max=max_val, step=1, value=400)
-    ui.input_checkbox_group(CHECKBOX, 'Options', CHECKBOX_OPT)
-    ui.input_numeric(N_LINES, 'Number of lines', 2)
-    ui.input_numeric('add_bp', 'see more bp', 500)
-    with ui.layout_columns():
-        ui.input_action_button("upstream", "upstream" )
-        ui.input_action_button("downstream", "downstream")
-    ui.input_action_button("reset", "reset view")
-    ui.input_checkbox('focus','focus on click', True)
 
 
 update_plot = reactive.value(False)
+peak = reactive.value(app_stats.peak_id)
+var_df = reactive.value(app_stats.var_df)
 
 @reactive.effect
 @reactive.event(input.downstream)
 def add_downstream():
     print(input.downstream())
-    app_stats.add_downstream(input.add_bp())
-    print(f'adding downstream {input.add_bp()}')
+    add_value = input.add_bp() *  (1 if input.zoom() else -1)
+    app_stats.add_downstream(add_value)
+    print(f'adding downstream {add_value}')
 
 @reactive.effect
 @reactive.event(input.upstream)
 def add_upstream():
     print(input.upstream())
-    app_stats.add_upstream(input.add_bp())
+    add_value = input.add_bp() * ( 1 if input.zoom() else -1)
+    app_stats.add_upstream(add_value)
+
 
 @reactive.effect
 @reactive.event(input.reset)
 def reset_view():
     print(input.reset())
     app_stats.reset_view()
-
-# this is how to change the peak list based on the family selection
-@reactive.effect
-def change_peak_list():
-    app_stats.set_family_id(input.family())
-    choices = app_stats.get_peak_list()
-    ui.update_selectize(PEAK, choices=choices)
-
-# this is to update the slider based on the source and peak selection
-# @reactive.effect
-# def change_score_threshold():
-#     print(f'changing score threshold for {input.source()} and {input.peak()}')
-#     min_score, max_score = app_stats.get_threshold_min_max()
-#     min_score, max_score = int(min_score), int(max_score)
-#     ui.update_slider(SCORE_THRESHOLD, min=min_score, max=max_score, value=min(400, max_score))
 
 @reactive.calc
 def update_family_details():
@@ -90,44 +56,95 @@ def update_family_details():
 
 @reactive.calc
 def update_peak_data():
-    print(f'updating peak data for {input.peak()}')
-    app_stats.set_peak_id(input.peak())
+    # print(f'updating peak data for {peak.get()["INTERVAL_ID"]}')
+    app_stats.set_peak_id(peak.get()['INTERVAL_ID'])
     cur_peak_df =  app_stats.get_peak_data()
     app_stats.reset_view()
-    # cur_peak_df =  get_peak_data(input.peak())
+
     return cur_peak_df
 
 @reactive.calc
 def update_variant_list():
-    print(f'updating variant list for {input.peak()}, {input.family()}')
+    # print(f'updating variant list for {peak.get()['INTERVAL_ID']}, {input.family()}')
     cur_var_df =  app_stats.get_variant_df()
     return cur_var_df
 
-@reactive.effect
-def set_source():
-    app_stats.set_source(input.source())
 
-
-def get_track_plot(peak, family):
+def get_track_plot(peak):
         print(f'getting plot')
-        print(f'peak: {peak}, source: family: {family}')
-        app_stats.get_track_plot()
+        print(f'peak: {peak}, source: family:')
+        app_stats.get_track_plot(peak)
 
-
-def get_TFBS_plot(peak, source, score_threshold, family, n_lines, checkbox):
-        print(f'getting plot')
-        print(f'peak: {peak}, source: {source}, score_threshold: {score_threshold}, family: {family}, n_lines: {n_lines}')
-        app_stats.get_TFBS_plot(n_lines, checkbox)
 
 with ui.layout_columns(col_widths=[8,4, 12],height='20vh'):
+
     with ui.card():
+        with ui.layout_columns():
+            ui.input_select(FAMILY, "Family", family_list)
+            # ui.input_select(PEAK, 'Peak',peak_list)
+        ui.card_header("family variants")
 
+        
+        @render.data_frame
+        def family_variants():
+            print(f'updating family variants for {input.family()}')
+            app_stats.set_family_id(input.family())
+            df = app_stats.get_view_all_variants()
+            df = df.reset_index()
+            df = df.rename(columns={'index':'variant_id'})
+            var_df.set(app_stats.var_df.iloc[df.index,:])
+            return render.DataGrid(df,  row_selection_mode="single")
+
+
+        @reactive.effect
+        @reactive.event(input.family_variants_selected_rows)
+        def change_track_by_family_var():
+            selected_row = input.family_variants_selected_rows()
+            print(f'changing track by family variant {selected_row}')
+            index = 0 if len(selected_row) == 0 else selected_row[0]
+            print(f'changing focus to {index}')
+            variant = var_df.get().to_dict('records')[index]
+            # print(variant)
+            peak.set(variant)
+            print(f'changing focus to {variant["INTERVAL_ID"]}')
+
+    with ui.card():
         ui.card_header("family data")
-
         @render.data_frame
         def family_details():
             return render.DataGrid(update_family_details(),  row_selection_mode="multiple")
         
+
+
+with ui.layout_columns(col_widths=[1,11, 12],height='25vh'):
+
+    with ui.card(height='10vh'):
+        ui.input_numeric('add_bp', 'see more bp', 500)
+        with ui.layout_columns():
+            ui.input_action_button("upstream", "upstream" )
+            ui.input_action_button("downstream", "downstream")
+        ui.input_switch("zoom", "zoom", True) 
+
+        @render.ui
+        def value():
+            zoom_status = "Out" if input.zoom() else "In"
+            return zoom_status
+            
+        ui.input_action_button("reset", "reset view")
+        ui.input_checkbox('focus','focus on click', True)
+
+    with ui.card(full_screen=True):
+        # ui.card_header("peak data")
+        @render.plot()
+        def track_plot():
+            print('updating plot')
+            update_plot.get()
+            print(f'{input.downstream()}')
+            print(f'{input.upstream()}')
+            input.reset()
+            get_track_plot(peak.get())
+
+with ui.layout_columns(col_widths=[4,4, 4, 12],height='15vh'):
 
     with ui.card():
         ui.card_header("peak data")
@@ -140,41 +157,25 @@ with ui.layout_columns(col_widths=[8,4, 12],height='20vh'):
         def peak_details2():
             df = update_peak_data()[['distance_from_nearest_DSD_TSS','n_probands','n_healthy']]
             return render.DataGrid(df,  row_selection_mode="single")
+        
 
-with ui.card(full_screen=True):
-    # ui.card_header("peak data")
-
-    @render.plot()
-    def track_plot():
-        print('updating plot')
-        update_plot.get()
-        print(f'{input.downstream()}')
-        print(f'{input.upstream()}')
-        input.reset()
-        get_track_plot(input.peak(), input.family())
-
-# with ui.card(full_screen=True):
-#     # ui.card_header("peak data")
-#     @render.plot()
-#     def TFBS_plot():
-#         print('updating plot')
-#         get_TFBS_plot(input.peak(), input.source(), 0, input.family(), input.n_lines() ,input.checkbox())
-
-with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
     with ui.card():
         ui.card_header("Peak variants")
         @render.data_frame
         def variant_list():
-            df = update_variant_list()
+            print(f'updating variant list for {peak.get()["INTERVAL_ID"]}')
+            df = app_stats.get_variant_df_by_id(peak.get()['INTERVAL_ID'])
+            # df = df[df.INTERVAL_ID == peak.get()['INTERVAL_ID']]
+            
             df = df.reset_index()
             df['index'] = df['index'] + 1
-            return render.DataGrid(df,  row_selection_mode="multiple")
+            return render.DataGrid(df,  row_selection_mode="single")
 
 
     @reactive.calc
     def update_variant_information():
         # req(input.variant_list_selected_rows())
-        print(f"change description for{input.peak(),input.family()}")
+        print(f"change description for{peak.get()['INTERVAL_ID'],input.family()}")
         index = 0 if len(input.variant_list_selected_rows()) == 0 else input.variant_list_selected_rows()[0]
         string = app_stats.get_variant_info(index)
         return string
@@ -196,7 +197,8 @@ with ui.layout_columns(col_widths=[8, 4, 12],height='20vh'):
         if input.focus():
             index = input.variant_list_selected_rows()[0]
             print(f'changing focus to {index}')
-            if app_stats.set_plot_from_variant(index):
-                update_plot.set(not update_plot.get())
-
+            variant = update_variant_list().copy().to_dict('records')[index]
+            variant['from'] = variant['POS'] - 250
+            variant['to'] = variant['POS'] + 250
+            peak.set(variant)
 

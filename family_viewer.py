@@ -38,6 +38,7 @@ VAR_DF_COLS_TO_KEEP = ['CHROM',
  'ALT',
  'AF',
  'AF_popmax',
+ 'INTERVAL_ID',
  'TAD',
  'total_probands',
  'healthy_members',]
@@ -264,16 +265,33 @@ class currentState:
         return tfbs_df
 
     
+    def filter_variant_df(self,var_df):
+        family_ids = self.get_family_metadata().ID
+        gt_cols = [f'{sample_id}:GT' for sample_id in family_ids]
+        relevant_cols = VAR_DF_COLS_TO_KEEP + gt_cols
+        var_df = var_df[relevant_cols]
+        return var_df
+
+
+    def get_variant_df_by_id(self, peak_id, to_filter= True):
+        var_df = self.var_df[self.var_df.INTERVAL_ID == peak_id].copy()
+        print (f'getting variant_df.family_id: {self.family_id}, peak_id: {self.peak_id}')
+        if to_filter:
+            var_df = self.filter_variant_df(var_df)
+        print(f'shape of var_df: {self.var_df.shape}')
+        return var_df.reset_index(drop=True)
+
     def get_variant_df(self,  to_filter= True):
         var_df = self.var_df[self.var_df.INTERVAL_ID == self.peak_id].copy()
         print (f'getting variant_df.family_id: {self.family_id}, peak_id: {self.peak_id}')
         if to_filter:
-            family_ids = self.get_family_metadata().ID
-            gt_cols = [f'{sample_id}:GT' for sample_id in family_ids]
-            relevant_cols = VAR_DF_COLS_TO_KEEP + gt_cols
-            var_df = var_df[relevant_cols] 
+            var_df = self.filter_variant_df(var_df)
         print(f'shape of var_df: {self.var_df.shape}')
         return var_df.reset_index(drop=True)
+
+    def get_view_all_variants(self):
+        return self.filter_variant_df(self.var_df)
+
 
 
     def get_peak_list(self):
@@ -353,22 +371,37 @@ class currentState:
         self.more_upstream = 0
         self.more_downstream = 0
 
-    def set_plot_from_variant(self, index):
+    def set_plot_from_variant(self, variant):
         """
         return True if the plot view was changed
         """
-        var_df = self.get_variant_df(to_filter=False)
-        variant = var_df.iloc[index]
         if   variant['POS'] - 250 == self.cur_plot_view['from'] and variant['POS'] + 250 == self.cur_plot_view['to']:
             return False
         self.more_upstream = 0
+        self.more_downstream = 0
         print(f'setting plot from variant: {variant["POS"]}')
         self.cur_plot_view['from'] = variant['POS'] - 250
         self.cur_plot_view['to'] = variant['POS'] + 250
         return True
+    
+    def set_plot_from_family_variant(self, variant):
+        """
+        return True if the plot view was changed
+        """
+        if   variant['from']== self.cur_plot_view['from'] and variant['to']  == self.cur_plot_view['to']:
+            return False
+        self.more_upstream = 0
+        self.more_downstream = 0
+        print(f'setting plot from variant: {variant["POS"]}')
+        self.cur_plot_view['CHROM'] = variant['CHROM']
+        self.cur_plot_view['from'] = variant['from'] 
+        self.cur_plot_view['to'] = variant['to'] 
+        return True
 
-    def get_track_plot(self):
-        peak_dict = self.cur_plot_view
+
+    def get_track_plot(self, peak):
+        self.peak_id = peak['INTERVAL_ID']
+        peak_dict = peak
         peak_dict['from'] -= self.more_upstream
         peak_dict['to'] += self.more_downstream
         print(f'getting track plot - from-{peak_dict["from"]}, to-{peak_dict["to"]}')
