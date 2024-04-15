@@ -32,16 +32,28 @@ UNAFFECTED_SIBILING = 3
 HETRO = ["1/0", "0/1", "1|0", "0|1"]
 HOMO_REF = ["0/0", "0|0", "", " ", None]
 HOMO_ALT = ["1/1", "1|1"]
-VAR_DF_COLS_TO_KEEP = ['CHROM',
+VAR_DF_COLS_TO_KEEP = [
+'CHROM',
  'POS',
  'REF',
  'ALT',
- 'AF',
+#  'AF',
  'AF_popmax',
  'INTERVAL_ID',
  'TAD',
+ 'distance_from_nearest_DSD_TSS',
  'total_probands',
- 'healthy_members',]
+ 'healthy_members']
+
+RENAME_DICT = {
+'CHROM': 'chr',
+ 'POS': 'pos',
+#  'AF',
+ 'distance_from_nearest_DSD_TSS' : 'distance',
+ 'healthy_members' : 'total_healthy'}
+
+
+
 
 #### table cols ARGS
 SEGMENT_ID_COL = 14
@@ -240,6 +252,14 @@ class currentState:
         self.peak_id = peak_id
 
 
+
+    def get_all_peak_vars(self, to_filter = False):
+        variant_df = pd.read_csv(VARIANT_INHERITENCE_FILE)
+        variant_df = variant_df[variant_df.INTERVAL_ID == self.peak_id]
+        if to_filter:
+            variant_df = variant_df[VAR_DF_COLS_TO_KEEP]
+        return  variant_df
+
     @timer_decorator
     def __set_full_variant_df(self):
         family_df = self.get_family_metadata()
@@ -270,6 +290,7 @@ class currentState:
         gt_cols = [f'{sample_id}:GT' for sample_id in family_ids]
         relevant_cols = VAR_DF_COLS_TO_KEEP + gt_cols
         var_df = var_df[relevant_cols]
+        var_df.columns = var_df.columns.str.replace(':GT','')
         return var_df
 
 
@@ -290,10 +311,15 @@ class currentState:
         return var_df.reset_index(drop=True)
 
     def get_view_all_variants(self):
-        return self.filter_variant_df(self.var_df)
+        return self.filter_variant_df(self.var_df).rename(columns=RENAME_DICT)
 
-
-
+    def get_all_peaks_df(self):
+        df =  self.get_all_peak_vars( to_filter = True).rename(columns=RENAME_DICT)
+        df = df.reset_index()
+        df = df.rename(columns={'index':'variant_id'})
+        df = df.drop(columns=['INTERVAL_ID'])
+        return df
+    
     def get_peak_list(self):
         print(f'updating peak list for family_id: {self.family_id}')
         print(f'found {self.var_df.shape[0]} variants')
@@ -304,8 +330,11 @@ class currentState:
 
 
     def __sum_names(self,names_col):
+
         names = set()
         for i in names_col:
+            if type(i) != str:
+                continue
             names = names |  set(i.split(';'))
         return len(names)
 
@@ -314,14 +343,18 @@ class currentState:
     def get_peak_data(self):
         print(f'getting peak data for peak_id: {self.peak_id}')
         cols = self.var_df.columns
+        all_vars_df = self.get_all_peak_vars()
+
+        print([i for i in all_vars_df.columns if 'proban' in i ])
+
         columns = ['INTERVAL_ID', 'CHROM']
         columns += cols[SEGMENT_ID_COL:LENGTH_COL].tolist() + cols[[TAD_COL]].tolist() + ['distance_from_nearest_DSD_TSS']
         columns = [i for i in columns if i in cols and i != 'median_DP']
         segment_df = self.get_variant_df(to_filter=False)[columns].copy()
-        segment_df.loc[:,'n_probands'] = self.__sum_names(cols[PROBAND_NAMES_COL])
-        segment_df.loc[:,'n_healthy'] = self.__sum_names(cols[HEALTHY_NAMES_COL])
+        segment_df.loc[:,'n_probands'] = self.__sum_names(all_vars_df['probands_names'].tolist())
+        segment_df.loc[:,'n_healthy'] = self.__sum_names(all_vars_df['healthy_names'].tolist())
         result = pd.DataFrame(segment_df.iloc[0,: ])
-        print (f'shape of segment_df: {result.shape}')
+
         return result.T
 
 
@@ -344,8 +377,8 @@ class currentState:
 
 
 
-    def get_variant_info(self,var_idx):
-        var_df = self.get_variant_df(to_filter=False)
+    def get_variant_info(self,var_idx, df=pd.DataFrame()):
+        var_df = df if len(df) else self.get_variant_df(to_filter=False)
         variant = var_df.iloc[var_idx]
         result = ''
         for col in ['probands_names', 'healthy_names']:

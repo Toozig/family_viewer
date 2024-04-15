@@ -121,6 +121,7 @@ def make_TFBS_plot(tfbs_df: pd.DataFrame ,
              n_lines: int,
              show_seq: bool):
     
+
     tfbs_df = tfbs_df.copy()
     var_df = var_df.copy()
 
@@ -154,7 +155,7 @@ def get_TFBS_plot(app_stats,
                 source_name= None,
                 score_threshold = None,
                 family_id = None):
-    print(f'setting plot with {peak_id}, {source_name}, {score_threshold}, {family_id}, {n_lines}')
+    # print(f'setting plot with {peak_id['INTERVAL_ID']}, {source_name}, {score_threshold}, {family_id}, {n_lines}')
     one_per_site = MAX_SCORE_TFBS in checked_box
     tfbs_df = app_stats.get_tfbs_filtered_df(one_per_site)
     var_df = app_stats.get_variant_df()
@@ -181,3 +182,22 @@ def get_track_plot(app_stats,
     return make_track_plot(tfbs_df, var_df, peak_dict, conservation_list, n_lines, show_seq)
 
 
+
+def create_legend():
+    fig = plt.figure(figsize=(3, 2))  # Adjust the size as needed
+ 
+    # Create an axis (not displayed, only for the legend)
+    ax = fig.add_subplot(111)
+ 
+    # Define the lines with different colors and line styles
+    from_mom = plt.Line2D([], [], color='magenta', linestyle='--', label='XX Inheritance')
+    from_dad = plt.Line2D([], [], color='blue', linestyle='--', label='XY Inheritance')
+    from_both = plt.Line2D([], [], color='purple', linestyle='--', label='Both Inheritance')
+    no_data = plt.Line2D([], [], color='gray', linestyle='-', label='No data')
+ 
+    # Add the lines to the legend
+    ax.legend(handles=[from_mom, from_dad,from_both, no_data], loc='center')
+ 
+    # Remove the axis to display only the legend
+    ax.axis('off')
+    return fig
