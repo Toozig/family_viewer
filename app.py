@@ -46,6 +46,9 @@ def add_upstream():
 @reactive.effect
 @reactive.event(input.reset)
 def reset_view():
+    variant = get_selected_family_variant()
+    # interval_id = variant['INTERVAL_ID']
+    peak.set(variant)
     print(input.reset())
     app_stats.reset_view()
 
@@ -76,16 +79,27 @@ def get_track_plot(peak):
         print(f'peak: {peak}, source: family:')
         app_stats.get_track_plot(peak)
 
+def get_selected_family_variant():
+    selected_row = input.family_variants_selected_rows()
+    print(f'changing track by family variant {selected_row}')
+    index = 0 if len(selected_row) == 0 else selected_row[0]
+    print(f'changing focus to {index}')
+    variant = var_df.get().to_dict('records')[index]
+    return variant
+
 
 ui.tags.style('.small_font { font-size: 1.3vh}')
-with ui.layout_columns(col_widths=[1,5,6,13],height='15vh', class_='small_font'):
+with ui.layout_columns(col_widths=[1,7,4,13],height='15vh', class_='small_font'):
 
     
     ui.input_select(FAMILY, "Family", family_list)
 
     @render.data_frame
     def family_details():
-        return render.DataGrid(update_family_details(),  row_selection_mode="multiple")
+
+        app_stats.set_family_id(input.family())
+        cur_fam_df =  app_stats.get_family_metadata()
+        return render.DataGrid(cur_fam_df,  row_selection_mode="multiple")
     
     with ui.card():
         @render.data_frame
@@ -97,33 +111,32 @@ with ui.layout_columns(col_widths=[1,5,6,13],height='15vh', class_='small_font')
                 df = update_peak_data()[['distance_from_nearest_DSD_TSS','n_probands','n_healthy']]
                 return render.DataGrid(df,  row_selection_mode="single")
     
-with ui.card(class_='small_font'):
-    ui.card_header("family variants")
+# with ui.card(class_='small_font'):
+#     ui.card_header("family variants")
 
-    @render.data_frame()
-    def family_variants():
-        print(f'updating family variants for {input.family()}')
-        app_stats.set_family_id(input.family())
-        df = app_stats.get_view_all_variants()
-        df = df.reset_index()
-        df = df.rename(columns={'index':'variant_id'})
-        df.REF = df.REF.apply(lambda x: x[:7])
-        df.ALT = df.ALT.apply(lambda x: x[:7])
-        var_df.set(app_stats.var_df.iloc[df.index,:])
-        return render.DataGrid(df,  row_selection_mode="single", height='20vh', width='700vh')
+@render.data_frame()
+def family_variants():
+    print(f'updating family variants for {input.family()}')
+    app_stats.set_family_id(input.family())
+    df = app_stats.get_view_all_variants()
+    df = df.reset_index()
+    df = df.rename(columns={'index':'variant_id'})
+    df.REF = df.REF.apply(lambda x: x[:7])
+    df.ALT = df.ALT.apply(lambda x: x[:7])
+    var_df.set(app_stats.var_df.iloc[df.index,:])
+    return render.DataGrid(df,  row_selection_mode="single", height='20vh', width='700vh')
 
 
-    @reactive.effect
-    @reactive.event(input.family_variants_selected_rows)
-    def change_track_by_family_var():
-        selected_row = input.family_variants_selected_rows()
-        print(f'changing track by family variant {selected_row}')
-        index = 0 if len(selected_row) == 0 else selected_row[0]
-        print(f'changing focus to {index}')
-        variant = var_df.get().to_dict('records')[index]
-        # print(variant)
-        peak.set(variant)
-        print(f'changing focus to {variant["INTERVAL_ID"]}')
+
+
+@reactive.effect
+@reactive.event(input.family_variants_selected_rows)
+# @reactive.event
+def change_track_by_family_var():
+    variant = get_selected_family_variant()
+    # print(variant)
+    peak.set(variant)
+    print(f'changing focus to {variant["INTERVAL_ID"]}')
 
 
 
@@ -168,17 +181,6 @@ def var_id_text():
 
 with ui.layout_columns(col_widths=[8,4, 12],height='25vh',class_='small_font'):
 
-    # with ui.card():
-        # ui.card_header("peak data")
-        # @render.data_frame
-        # def peak_details():
-        #     df = update_peak_data()[['INTERVAL_ID','CHROM','from','to','length']]
-        #     return render.DataGrid(df,  row_selection_mode="single")
-        
-        # @render.data_frame
-        # def peak_details2():
-        #     df = update_peak_data()[['distance_from_nearest_DSD_TSS','n_probands','n_healthy']]
-        #     return render.DataGrid(df,  row_selection_mode="single")
 
     with ui.layout_column_wrap(width= "8/1",heights_equal='row', fill=False):
         ui.input_checkbox('focus','focus on click', False)
@@ -190,29 +192,28 @@ with ui.layout_columns(col_widths=[8,4, 12],height='25vh',class_='small_font'):
 
             return render.DataGrid(df,  row_selection_mode="single", height='25vh', width='700vh')
 
-    with ui.layout_column_wrap(width= "4/1",):
-        @render.ui
-        def var_information():
-            peak.get()
-            df = app_stats.get_all_peak_vars( to_filter = False)
-            index_list = input.all_peak_variants_selected_rows()
-            index = 0 if len(index_list) == 0 else index_list[0]
-            string = app_stats.get_variant_info(index,df)
-            print(string)   
-            return ui.markdown(string)
-        # ui.markdown("** hey! **")
+    @render.ui
+    def var_information():
+        peak.get()
+        df = app_stats.get_all_peak_vars( to_filter = False)
+        index_list = input.all_peak_variants_selected_rows()
+        index = 0 if len(index_list) == 0 else index_list[0]
+        string = app_stats.get_variant_info(index,df)
+        print(string)   
+        return ui.markdown(string)
+    # ui.markdown("** hey! **")
 
-        @reactive.effect
-        @reactive.event( input.all_peak_variants_selected_rows)
-        def change_focus():
-            req(input.all_peak_variants_selected_rows())
-            if input.focus():
-                index = input.all_peak_variants_selected_rows()[0]
-                print(f'changing focus to {index}')
-                variant = app_stats.get_all_peak_vars( to_filter = False).to_dict('records')[index]
-                variant['from'] = variant['POS'] - 250
-                variant['to'] = variant['POS'] + 250
-                peak.set(variant)
+    @reactive.effect
+    @reactive.event( input.all_peak_variants_selected_rows)
+    def change_focus():
+        req(input.all_peak_variants_selected_rows())
+        if input.focus():
+            index = input.all_peak_variants_selected_rows()[0]
+            print(f'changing focus to {index}')
+            variant = app_stats.get_all_peak_vars( to_filter = False).to_dict('records')[index]
+            variant['from'] = variant['POS'] - 250
+            variant['to'] = variant['POS'] + 250
+            peak.set(variant)
 
 
     # with ui.card():
